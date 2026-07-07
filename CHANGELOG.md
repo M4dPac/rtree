@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-07-07
+
+### Maintenance
+
+- Bump quick-xml from 0.40 to 0.41
+- Update Cargo.lock with latest compatible dependency versions
+
 ## [0.7.0] - 2026-05-31
 
 ### Added
