@@ -115,7 +115,10 @@ impl<'a> StreamingEngine<'a> {
             ));
         }
 
-        let ignore = common::IgnoreMatcher::new(!config.no_ignore);
+        let mut ignore = common::IgnoreMatcher::new(!config.no_ignore);
+        // See engine.rs: seed ancestor .gitignore/.rtignore rules so
+        // root-anchored patterns above `root` are not silently dropped.
+        ignore.seed_from_ancestors(root);
 
         state.visited.insert(common::make_visited_key(root));
         self.emit_children(

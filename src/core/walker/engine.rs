@@ -173,7 +173,11 @@ impl OrderedEngine {
         }
 
         let dir_limiter = DirReadLimiter::new(config.queue_cap.unwrap_or(64));
-        let ignore = common::IgnoreMatcher::new(!config.no_ignore);
+        let mut ignore = common::IgnoreMatcher::new(!config.no_ignore);
+        // Load .gitignore/.rtignore rules from directories *above* root_path
+        // so root-anchored patterns (e.g. `/dir/ignore/`) defined higher up
+        // still apply when a subdirectory is passed as the traversal root.
+        ignore.seed_from_ancestors(root_path);
 
         // Dispatch: pool present → parallel, otherwise → sequential.
         // Sequential path is written once (was duplicated before).

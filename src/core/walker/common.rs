@@ -95,6 +95,50 @@ impl IgnoreMatcher {
         }
     }
 
+    /// Seed the matcher with `.gitignore` / `.rtignore` rules found in every
+    /// ancestor of `root` (not including `root` itself — the caller is
+    /// expected to `push_dir(root)` separately when traversal begins).
+    ///
+    /// Real `git` resolves root-anchored patterns (e.g. `/dir/ignore/`)
+    /// relative to the directory containing the `.gitignore` file, not
+    /// relative to whatever path was passed on the command line. Without
+    /// this seeding step, running `rt <subdir>` silently drops any ignore
+    /// rules defined in a `.gitignore` above `<subdir>` — e.g. a rule
+    /// `/dir/ignore/` in the project root has no effect when `dir` itself
+    /// is passed as the traversal root, because that `.gitignore` is never
+    /// discovered.
+    pub fn seed_from_ancestors(&mut self, root: &Path) {
+        if !self.enabled {
+            return;
+        }
+
+        // Ancestor discovery needs an absolute path — a relative root's
+        // `.ancestors()` would stop after one or two components.
+        let absolute = if root.is_absolute() {
+            root.to_path_buf()
+        } else {
+            std::fs::canonicalize(root).unwrap_or_else(|_| {
+                std::env::current_dir()
+                    .map(|cwd| cwd.join(root))
+                    .unwrap_or_else(|_| root.to_path_buf())
+            })
+        };
+
+        // Collect ancestors above `root`, outermost first, so the stack
+        // ends up ordered the same way a top-down traversal starting at
+        // the real project root would have built it.
+        let mut ancestors: Vec<PathBuf> = absolute
+            .ancestors()
+            .skip(1)
+            .map(Path::to_path_buf)
+            .collect();
+        ancestors.reverse();
+
+        for dir in ancestors {
+            self.push_dir(&dir);
+        }
+    }
+
     /// Check if a path is ignored by any rules in the stack.
     pub fn is_ignored(&self, path: &Path, is_dir: bool) -> bool {
         if !self.enabled {
@@ -816,5 +860,46 @@ mod tests {
         ignore.push_dir(dir.path());
 
         assert!(!ignore.is_ignored(&dir.path().join("ignored_file.txt"), false));
+    }
+
+    // Regression test for: root-anchored gitignore patterns defined above
+    // the traversal root were silently ignored when a subdirectory was
+    // passed directly to `rt`, e.g.:
+    //   project/.gitignore   ->  "/dir/ignore/"
+    //   project/dir/ignore/  ->  should be ignored even when running
+    //                             `rt project/dir` directly.
+    #[test]
+    fn seed_from_ancestors_applies_parent_gitignore_when_root_is_subdir() {
+        let project = tempfile::tempdir().unwrap();
+        std::fs::write(project.path().join(".gitignore"), "/dir/ignore/\n").unwrap();
+
+        let sub_root = project.path().join("dir");
+        std::fs::create_dir_all(sub_root.join("ignore")).unwrap();
+        std::fs::write(sub_root.join("ignore").join("file.txt"), "").unwrap();
+        std::fs::write(sub_root.join("keep.txt"), "").unwrap();
+
+        // Before the fix: only `push_dir(sub_root)` was called, so the
+        // `.gitignore` in `project/` (the parent of the traversal root)
+        // was never discovered and `dir/ignore` leaked into the output.
+        let mut ignore = IgnoreMatcher::new(true);
+        ignore.seed_from_ancestors(&sub_root);
+        ignore.push_dir(&sub_root);
+
+        assert!(ignore.is_ignored(&sub_root.join("ignore"), true));
+        assert!(!ignore.is_ignored(&sub_root.join("keep.txt"), false));
+    }
+
+    #[test]
+    fn seed_from_ancestors_noop_when_disabled() {
+        let project = tempfile::tempdir().unwrap();
+        std::fs::write(project.path().join(".gitignore"), "/dir/ignore/\n").unwrap();
+        let sub_root = project.path().join("dir");
+        std::fs::create_dir_all(sub_root.join("ignore")).unwrap();
+
+        let mut ignore = IgnoreMatcher::new(false);
+        ignore.seed_from_ancestors(&sub_root);
+        ignore.push_dir(&sub_root);
+
+        assert!(!ignore.is_ignored(&sub_root.join("ignore"), true));
     }
 }

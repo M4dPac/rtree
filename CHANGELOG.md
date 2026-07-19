@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Root-anchored `.gitignore`/`.rtignore` patterns (e.g. `/dir/ignore/`) defined above the traversal root are no longer silently dropped when a subdirectory is passed directly as the path argument (e.g. `rt dir` instead of running from the project root)
+
 ## [0.7.1] - 2026-07-07
 
 ### Maintenance
