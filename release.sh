@@ -12,8 +12,9 @@ set -euo pipefail
 #   2. Updates version in Cargo.toml and Cargo.lock
 #   3. Adds a new section to CHANGELOG.md if not present
 #   4. Runs ./check.sh (fmt, clippy, tests)
-#   5. Dry-runs cargo publish (validation only)
-#   6. Commits changes, creates an annotated tag, and pushes
+#   5. Commits the release changes
+#   6. Dry-runs cargo publish (validation only)
+#   7. Creates an annotated tag and pushes
 #
 # GitHub Actions will then automatically:
 #   - Create a GitHub Release with binaries
@@ -84,16 +85,19 @@ fi
 echo "🔍 Running check.sh..."
 ./check.sh
 
+# ── Commit ───────────────────────────────────────────────────
+# Committed *before* the dry-run so that `cargo publish --dry-run`
+# validates a clean tree, and the tag created below points at the
+# exact commit that was validated.
+echo "💾 Committing release changes..."
+git add Cargo.toml Cargo.lock CHANGELOG.md
+git commit -m "chore(build): release $VERSION"
+
 # ── Dry-run publish (validation only) ────────────────────────
 # Real publish is handled by GitHub Actions (release.yml).
 # This step catches packaging errors before the tag is pushed.
 echo "📦 Validating crate package (dry-run)..."
 cargo publish --dry-run
-
-# ── Commit ───────────────────────────────────────────────────
-echo "💾 Committing release changes..."
-git add Cargo.toml Cargo.lock CHANGELOG.md
-git commit -m "chore(build): release $VERSION"
 
 # ── Tag ──────────────────────────────────────────────────────
 echo "🏷️  Creating annotated tag v$VERSION..."
